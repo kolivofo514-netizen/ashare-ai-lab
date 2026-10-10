@@ -1,0 +1,66 @@
+
+name: A股AI研究工作台
+
+on:
+  workflow_dispatch:
+  schedule:
+    - cron: '45 8 * * 1-5'
+
+permissions:
+  contents: read
+  pages: write
+  id-token: write
+
+concurrency:
+  group: pages
+  cancel-in-progress: false
+
+jobs:
+  build-and-deploy:
+    runs-on: ubuntu-latest
+    timeout-minutes: 45
+
+    steps:
+      - name: 获取项目代码
+        uses: actions/checkout@v4
+
+      - name: 配置Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+
+      - name: 安装依赖
+        run: pip install -r requirements.txt
+
+      - name: 运行自动化测试
+        run: python -m unittest discover -v
+
+      - name: 获取行情并执行研究
+        run: |
+          python lab.py all \
+            --symbols 000001,600036,600519,000858,002594,300750 \
+            --start 20220101 \
+            --end $(date -u +%Y%m%d) \
+            --refresh
+
+      - name: 生成手机网页
+        run: python build_dashboard.py
+
+      - name: 保存研究结果
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: research-output
+          path: output/
+          if-no-files-found: warn
+
+      - name: 配置GitHub Pages
+        uses: actions/configure-pages@v5
+
+      - name: 上传网页
+        uses: actions/upload-pages-artifact@v3
+        with:
+          path: site/
+
+      - name: 发布手机网页
+        uses: actions/deploy-pages@v4
